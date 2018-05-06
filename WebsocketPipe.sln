@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
 VisualStudioVersion = 15.0.26430.16
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WebsocketPipe", "WebsocketPipe\WebsocketPipe.csproj", "{1A7330F9-6056-41B7-BE23-9288F8141798}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WebsocketPipeCS", "WebsocketPipeCS\WebsocketPipeCS.csproj", "{1A7330F9-6056-41B7-BE23-9288F8141798}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

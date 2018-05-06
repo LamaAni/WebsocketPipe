@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace WebsocketPipe
 {
-    public class Class1
+    public class WebsocketPipe
     {
     }
 }
