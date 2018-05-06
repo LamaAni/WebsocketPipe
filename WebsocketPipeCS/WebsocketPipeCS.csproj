@@ -45,8 +45,12 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="WebsocketPipeDataSerializer.cs" />
     <Compile Include="WebsocketPipe.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="WebsocketPipeDataSocket.cs" />
+    <Compile Include="WebsocketPipeNotificationClient.cs" />
+    <Compile Include="WebsocketPipeNotificationServer.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

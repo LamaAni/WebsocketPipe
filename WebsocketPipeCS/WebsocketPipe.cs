@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -154,6 +155,7 @@ namespace WebsocketPipe
                 MakeServer();
 
             WSServer.Start();
+            DataSocket.Initialize();
         }
 
         /// <summary>
@@ -170,6 +172,8 @@ namespace WebsocketPipe
 
             if (WSServer.IsListening)
                 WSServer.Stop();
+
+            DataSocket.Close();
         }
 
         /// <summary>
@@ -188,6 +192,8 @@ namespace WebsocketPipe
                 WS.ConnectAsync();
             else
                 WS.Connect();
+
+            DataSocket.Initialize();
         }
 
         /// <summary>
@@ -208,25 +214,34 @@ namespace WebsocketPipe
             if (async)
                 WS.CloseAsync();
             else WS.Close();
+
+            DataSocket.Close();
         }
 
         #endregion
 
         #region message processing (WebsocketSharp)
 
-        protected override void OnError(ErrorEventArgs e)
+        protected override void OnError(WebSocketSharp.ErrorEventArgs e)
         {
             base.OnError(e);
         }
 
-        protected override void OnClose(CloseEventArgs e)
+        protected override void OnClose(WebSocketSharp.CloseEventArgs e)
         {
             base.OnClose(e);
         }
 
-        protected override void OnMessage(MessageEventArgs e)
+        protected override void OnMessage(WebSocketSharp.MessageEventArgs e)
         {
-            base.OnMessage(e);
+            foreach(var msg in DataSocket.ReadMessages(this, new MemoryStream(e.RawData)))
+            {
+                if(MessageRecived!=null)
+                {
+                    MessageEventArgs ea = new MessageEventArgs(msg);
+                    MessageRecived(this, ea);
+                }
+            }
         }
 
         protected override void OnOpen()
@@ -242,8 +257,8 @@ namespace WebsocketPipe
         /// Sends a message to the server/ all clients (if is a server).
         /// </summary>
         /// <param name="msg">The message to send</param>
-        /// /// <param name="asyncOnComplete">The action to take if async. If null, then synchronius</param>
-        public void Send(TMessage msg, Action asyncOnComplete = null)
+        /// /// <param name="asyncOnComplete">The action to take if async. If null, then sync message. (true if succeed, client id or server url)</param>
+        public void Send(TMessage msg, Action<bool, string> asyncOnComplete = null)
         {
             Send(msg, (string[])null, asyncOnComplete);
         }
@@ -253,8 +268,8 @@ namespace WebsocketPipe
         /// </summary>
         /// <param name="msg">The message to send</param>
         /// <param name="clientIds">The client ids to send the msg to, if a server.</param>
-        /// <param name="asyncOnComplete">The action to take if async. If null, then synchronius</param>
-        public void Send(TMessage msg, string clientId = null, Action asyncOnComplete = null)
+        /// /// <param name="asyncOnComplete">The action to take if async. If null, then sync message. (true if succeed, client id or server url)</param>
+        public void Send(TMessage msg, string clientId = null, Action<bool, string> asyncOnComplete = null)
         {
             Send(msg, clientId == null ? null : new string[] { clientId }, asyncOnComplete);
         }
@@ -264,61 +279,96 @@ namespace WebsocketPipe
         /// </summary>
         /// <param name="msg">The message to send</param>
         /// <param name="clientIds">The client ids to send the msg to, if a server.</param>
-        /// <param name="asyncOnComplete">The action to take if async. If null, then synchronius</param>
-        public void Send(TMessage msg, string[] clientIds = null, Action asyncOnComplete = null)
+        /// /// <param name="asyncOnComplete">The action to take if async. If null, then sync message. (true if succeed, client id or server url)</param>
+        public void Send(TMessage msg, string[] clientIds = null, Action<bool, string> asyncOnComplete = null)
         {
             if (clientIds != null && WS != null)
                 throw new Exception("You are trying to send a message to specific clients from a client WebsocketPipe. This is not A server.");
 
-            byte[] msgBytes = null;
-
             if (WS != null)
             {
-            }
-            else if (WSServer != null)
-            {
-                if (clientIds == null)
+                byte[] msgBytes = GetMessageBytes(msg, "to_server");
+
+                if (asyncOnComplete != null)
                 {
-                    if (asyncOnComplete!=null)
-                        WSServer.WebSocketServices.BroadcastAsync(msgBytes, asyncOnComplete);
-                    else
-                        WSServer.WebSocketServices.Broadcast(msgBytes);
+                    WS.SendAsync(msgBytes, (t) =>
+                    {
+                        asyncOnComplete(t, WS.Url.ToString());
+                    });
                 }
                 else
                 {
-                    // finding clients with matching ids.
-                    List<WebSocketSharp.Server.IWebSocketSession> clients =
-                        new List<WebSocketSharp.Server.IWebSocketSession>();
-                    HashSet<string> clientSet = new HashSet<string>(clientIds);
-
-                    var sessions = WSServer.WebSocketServices.Hosts.SelectMany(
-                        host => host.Sessions.Sessions.Where(s => clientSet.Contains(s.ID)));
-
-                    foreach (var client in sessions)
-                    {
-                        if (asyncOnComplete != null)
-                            client.Context.WebSocket.SendAsync(msgBytes, (t) => { if (t) asyncOnComplete(); });
-                        else client.Context.WebSocket.Send(msgBytes);
-                    }
+                    WS.Send(msgBytes);
                 }
+            }
+            else if (WSServer != null)
+            {
+                // finding clients with matching ids.
+                List<WebSocketSharp.Server.IWebSocketSession> clients =
+                    new List<WebSocketSharp.Server.IWebSocketSession>();
+
+                HashSet<string> clientSet = clientIds==null? null : new HashSet<string>(clientIds);
+                Func<string, bool> isClientOK = (id) =>
+                 {
+                     if (clientSet == null)
+                         return true;
+                     return clientSet.Contains(id);
+                 };
+
+                var sessions = WSServer.WebSocketServices.Hosts.SelectMany(
+                    host => host.Sessions.Sessions.Where(s => isClientOK(s.ID)));
+
+                // Sending to the specific clients.
+                foreach (var client in sessions)
+                {
+                    byte[] msgBytes = GetMessageBytes(msg, client.ID);
+                    if (asyncOnComplete != null)
+                        client.Context.WebSocket.SendAsync(msgBytes, (t) =>
+                        {
+                            asyncOnComplete(t, client.ID);
+                        });
+                    else client.Context.WebSocket.Send(msgBytes);
+                }
+
             }
             else throw new Exception("You are not connected to any servers." +
                 "Please use method Connect to connect to a server or method listen to wait for others to connecto to you.");
+        }
+
+        private byte[] GetMessageBytes(TMessage msg, string id)
+        {
+            MemoryStream strm = new MemoryStream();
+            DataSocket.WriteMessage(this, msg, strm, id);
+            strm.Close();
+            strm.Dispose();
+
+            byte[] msgBytes = strm.ToArray();
+            return msgBytes;
         }
 
         #endregion
 
         #region events
 
+        /// <summary>
+        /// On message event args
+        /// </summary>
+        public class MessageEventArgs : EventArgs
+        {
+            public MessageEventArgs(TMessage msg)
+            {
+                Message = msg;
+            }
+            public TMessage Message { get; private set; }
+        }
+
+
+        /// <summary>
+        /// Called when a message is recived.
+        /// </summary>
+        public event EventHandler<MessageEventArgs> MessageRecived;
+
         #endregion
     }
 
-    /// <summary>
-    /// The message info send with the pipe packet.
-    /// </summary>
-    public class WebsocketPipeMessageInfo
-    {
-        public string[] msg;
-        public byte[] Data;
-    }
 }
