@@ -22,6 +22,7 @@ namespace ClientTesterConsole
                 datasocket = new WebsocketPipe.WebsocketPipeMemoryMappedFileDataSocket<byte[]>();
             else datasocket = new WebsocketPipe.WebsocketPipeMSGInternalDataSocket<byte[]>();
 
+
             ClientTester = new WebsocketPipe.WebsocketPipe<byte[]>(url,datasocket);
 
             ClientTester.Connect();
