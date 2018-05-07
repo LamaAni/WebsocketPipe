@@ -44,7 +44,7 @@ namespace ServerTesterConsole
                 System.IO.MemoryStream ms = new System.IO.MemoryStream();
 
                 // writing first to prepare the serializer.
-                int numberOfSends = 20;
+                int numberOfSends = 5;
                 int numberOfSerializations = numberOfSends;
 
                 ms.Seek(0, System.IO.SeekOrigin.Begin);
@@ -83,17 +83,27 @@ namespace ServerTesterConsole
                     Console.WriteLine("Total memory mapped file creations: " + mmfds.TotalNumberOfMemoryMappedFilesCreated);
                     Console.WriteLine("Total active memory mapped file: " + mmfds.TotalActiveMemoryMappedFiles);
                 }
+
+                InternalClient.Disconnect();
             }
 
+            pingpong = true;
             Console.WriteLine("Listening to service at :" + TestServer.Address.ToString());
             Console.WriteLine("Press <enter> to exit.");
             Console.ReadLine();
         }
 
 
+        static bool pingpong = false;
         static int totalRecivedCount=0;
         private static void TestServer_MessageRecived(object sender, WebsocketPipe.WebsocketPipe<byte[]>.MessageEventArgs e)
         {
+            if(pingpong)
+            {
+                Console.WriteLine("Ping at server with " + e.Message.Length + " bytes");
+                TestServer.Send(e.Message, (t, s) => { });
+                return;
+            }
             totalRecivedCount++;
         }
     }
