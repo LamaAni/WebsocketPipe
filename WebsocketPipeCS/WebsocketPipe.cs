@@ -13,7 +13,7 @@ namespace WebsocketPipe
     /// The pipe will use various methods for data transfer.
     /// NOTE: currently implemented only MappedMemoryFile and Websocket.
     /// </summary>
-    public class WebsocketPipe<TMessage> : WebSocketSharp.Server.WebSocketBehavior, IDisposable
+    public class WebsocketPipe<TMessage> : IDisposable
         where TMessage:class
     {
         #region construction
@@ -59,7 +59,7 @@ namespace WebsocketPipe
             DataSocket = dataSocket;
             PipeID = Guid.NewGuid().ToString();
 
-            CallOnLog = (d, s) => { };
+            LogMethod = (d, s) => { };
         }
 
         #endregion
@@ -104,11 +104,48 @@ namespace WebsocketPipe
         /// <summary>
         /// Method to be called on log.
         /// </summary>
-        public Action<LogData,string> CallOnLog { get; set; }
+        public Action<LogData,string> LogMethod { get; set; }
 
         #endregion
 
         #region connection methods
+
+        /// <summary>
+        /// Implements the connection to the server.
+        /// </summary>
+        class WebsocketConnection : WebSocketSharp.Server.WebSocketBehavior
+        {
+            public WebsocketConnection(WebsocketPipe<TMessage> pipe)
+            {
+                Pipe = pipe;
+            }
+
+            public WebsocketPipe<TMessage> Pipe { get; private set; }
+
+            protected override void OnClose(CloseEventArgs e)
+            {
+                Pipe.OnClose(e);
+                base.OnClose(e);
+            }
+
+            protected override void OnError(WebSocketSharp.ErrorEventArgs e)
+            {
+                Pipe.OnError(e);
+                base.OnError(e);
+            }
+
+            protected override void OnMessage(WebSocketSharp.MessageEventArgs e)
+            {
+                Pipe.OnMessage(e);
+                base.OnMessage(e);
+            }
+
+            protected override void OnOpen()
+            {
+                Pipe.OnOpen();
+                base.OnOpen();
+            }
+        }
 
         /// <summary>
         /// Creates the server. Will override old servers.
@@ -125,13 +162,12 @@ namespace WebsocketPipe
 
             string serverURL = address.Scheme + "://" + address.Host + ":" + Address.Port;
             WSServer = new WebSocketSharp.Server.WebSocketServer(serverURL);
-
+            
             // Creates a server.
-            var self = this;
-            WSServer.AddWebSocketService<WebsocketPipe<TMessage>>(
-                address.AbsolutePath, () => self);
+            WSServer.AddWebSocketService<WebsocketConnection>(
+                address.AbsolutePath, () => new WebsocketConnection(this));
 
-            WSServer.Log.Output = CallOnLog;
+            WSServer.Log.Output = (d, s) => LogMethod(d, s);
         }
 
         /// <summary>
@@ -155,7 +191,7 @@ namespace WebsocketPipe
             WS.OnError+= (s, e) => self.OnError(e);
             WS.OnMessage+= (s, e) => self.OnMessage(e);
 
-            WS.Log.Output = CallOnLog;
+            WS.Log.Output = (d, s) => LogMethod(d, s);
         }
 
         /// <summary>
@@ -239,17 +275,15 @@ namespace WebsocketPipe
 
         #region message processing (WebsocketSharp)
 
-        protected override void OnError(WebSocketSharp.ErrorEventArgs e)
+        protected void OnError(WebSocketSharp.ErrorEventArgs e)
         {
-            base.OnError(e);
         }
 
-        protected override void OnClose(WebSocketSharp.CloseEventArgs e)
+        protected void OnClose(WebSocketSharp.CloseEventArgs e)
         {
-            base.OnClose(e);
         }
 
-        protected override void OnMessage(WebSocketSharp.MessageEventArgs e)
+        protected void OnMessage(WebSocketSharp.MessageEventArgs e)
         {
             MemoryStream ms = new MemoryStream(e.RawData);
             var msgs = DataSocket.ReadMessages(this, ms);
@@ -267,9 +301,8 @@ namespace WebsocketPipe
             }
         }
 
-        protected override void OnOpen()
+        protected void OnOpen()
         {
-            base.OnOpen();
         }
 
         #endregion

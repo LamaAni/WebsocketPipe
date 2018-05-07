@@ -12,9 +12,9 @@ namespace ClientTesterConsole
 
         static void Main(string[] args)
         {
-            var dataToSend = new byte[1000];
+            var dataToSend = new byte[3000*3000];
 
-            bool usePipe = false;
+            bool usePipe = true;
             var url = new Uri("ws://localhost:8000/Tester");
             WebsocketPipe.IWebsocketPipeDataSocket<byte[]> datasocket;
             if (usePipe)
@@ -23,9 +23,14 @@ namespace ClientTesterConsole
 
 
             ClientTester = new WebsocketPipe.WebsocketPipe<byte[]>(url,datasocket);
-
-            ClientTester.Connect();
+            ClientTester.LogMethod = (d, s) =>
+            {
+                Console.WriteLine(d.ToString());
+            };
             ClientTester.MessageRecived += ClientTester_MessageRecived;
+            ClientTester.Connect();
+            
+
             System.Threading.Thread.Sleep(100);
             ClientTester.Send(dataToSend, (a, b) => { });
             
@@ -39,7 +44,7 @@ namespace ClientTesterConsole
         private static void ClientTester_MessageRecived(object sender, WebsocketPipe.WebsocketPipe<byte[]>.MessageEventArgs e)
         {
             // pingpong.
-            Console.WriteLine("Recived back " + e.Message.Length + " bytes.");
+            Console.WriteLine("Recived from server " + e.Message.Length + " bytes.");
         }
     }
 }

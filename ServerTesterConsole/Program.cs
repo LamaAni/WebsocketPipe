@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
+
 namespace ServerTesterConsole
 {
     class Program
@@ -17,9 +18,9 @@ namespace ServerTesterConsole
             Console.WriteLine("Preparing data...");
             
             int pixelNumberOfBytes = 4;
-            int imgWidth = 50;
+            int imgWidth = 3000;
             int imgHeight = imgWidth;
-            bool usePipe = false;
+            bool usePipe = true;
 
             var url = new Uri("ws://localhost:8000/Tester");
             WebsocketPipe.IWebsocketPipeDataSocket<byte[]> datasocket;
@@ -28,8 +29,8 @@ namespace ServerTesterConsole
             else datasocket = new WebsocketPipe.WebsocketPipeMSGInternalDataSocket<byte[]>();
             var dataToSend = new byte[imgWidth * imgHeight * pixelNumberOfBytes];
 
-
             TestServer = new WebsocketPipe.WebsocketPipe<byte[]>(url, datasocket);
+            TestServer.LogMethod = (d, s) => Console.WriteLine(d.ToString());
 
             Console.WriteLine("Creating server..");
             TestServer.MessageRecived += TestServer_MessageRecived;
@@ -39,7 +40,10 @@ namespace ServerTesterConsole
             {
                 Console.WriteLine("Creating internal client and testing..");
                 InternalClient = new WebsocketPipe.WebsocketPipe<byte[]>(url, datasocket);
+                InternalClient.MessageRecived += InternalClient_MessageRecived;
                 InternalClient.Connect();
+
+                TestServer.Send(dataToSend);
 
                 Stopwatch watch = new Stopwatch();
                 System.IO.MemoryStream ms = new System.IO.MemoryStream();
@@ -92,8 +96,17 @@ namespace ServerTesterConsole
             Console.WriteLine("Listening to service at :" + TestServer.Address.ToString());
             Console.WriteLine("Press <enter> to exit.");
             Console.ReadLine();
+
+            Console.Write("Stopping the server ... ");
+            TestServer.StopListening();
+            TestServer.Dispose();
+            Console.WriteLine("OK.");
         }
 
+        private static void InternalClient_MessageRecived(object sender, WebsocketPipe.WebsocketPipe<byte[]>.MessageEventArgs e)
+        {
+            Console.WriteLine("Recived from server " + e.Message.Length + " bytes");
+        }
 
         static bool pingpong = false;
         static int totalRecivedCount=0;
