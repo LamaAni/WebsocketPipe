@@ -251,7 +251,13 @@ namespace WebsocketPipe
 
         protected override void OnMessage(WebSocketSharp.MessageEventArgs e)
         {
-            foreach(var msg in DataSocket.ReadMessages(this, new MemoryStream(e.RawData)))
+            MemoryStream ms = new MemoryStream(e.RawData);
+            var msgs = DataSocket.ReadMessages(this, ms);
+            ms.Close();
+            ms.Dispose();
+            ms = null;
+
+            foreach (var msg in msgs)
             {
                 if(MessageRecived!=null)
                 {

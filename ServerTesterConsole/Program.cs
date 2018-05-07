@@ -44,7 +44,7 @@ namespace ServerTesterConsole
                 System.IO.MemoryStream ms = new System.IO.MemoryStream();
 
                 // writing first to prepare the serializer.
-                int numberOfSends = 100;
+                int numberOfSends = 10;
                 int numberOfSerializations = numberOfSends;
 
                 ms.Seek(0, System.IO.SeekOrigin.Begin);
@@ -65,7 +65,6 @@ namespace ServerTesterConsole
                 watch.Reset();
                 watch.Start();
                 
-
                 for (int i = 0; i < numberOfSends; i++)
                     InternalClient.Send(dataToSend);
 
@@ -86,9 +85,7 @@ namespace ServerTesterConsole
         static int totalRecivedCount=0;
         private static void TestServer_MessageRecived(object sender, WebsocketPipe.WebsocketPipe<string>.MessageEventArgs e)
         {
-            //Console.WriteLine("Message recived, here it is: ");
             totalRecivedCount++;
-            //Console.WriteLine(e.Message);
         }
     }
 }

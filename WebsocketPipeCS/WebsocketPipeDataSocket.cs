@@ -158,8 +158,10 @@ namespace WebsocketPipe
 
                 MemoryMappedFile mmf = MemoryMappedFile.CreateOrOpen(id, ToMMFFileSize(totalDataSize) + MMFHeaderSize);
                 strm = mmf.CreateViewStream(0, 0, MemoryMappedFileAccess.ReadWrite);
+
                 wr = new BinaryWriter(strm);
                 MemoryMapByID[id] = new Tuple<int, MemoryMappedFile>(totalDataSize, mmf);
+                mmf = null;
 
                 wr.Write((byte)0);
                 wr.Write(totalDataSize);
@@ -178,6 +180,8 @@ namespace WebsocketPipe
                 // at write position.
             }
 
+            wr = null;
+            oldData = null;
             return strm;
         }
 
@@ -210,9 +214,9 @@ namespace WebsocketPipe
             byte[] msgBytes = ms.ToArray();
             ms.Close();
             ms.Dispose();
+            ms = null;
             
             // make the id and write it to the stream.
-
             bool isPacketInternal = msgBytes.Length < this.UseInternalPacketDataSendingIfMsgByteSizeIsLessThen;
             BinaryWriter wr;
             to.WriteByte((byte)(isPacketInternal ? 1 : 0));
@@ -284,6 +288,8 @@ namespace WebsocketPipe
             // reading from the memory stream.
             string id = ASCIIEncoding.ASCII.GetString(buffer, 0, buffer.Length);
 
+            buffer = null;
+
             // calling the mutex to verify reading.
             Mutex mu = new Mutex(false, id + "_mutex");
             mu.WaitOne(MemoryMappedFileAccessTimeout);
@@ -303,14 +309,18 @@ namespace WebsocketPipe
                 msgsData = reader.ReadBytes(totalDataLength);
             }
 
+            strm.Flush();
             strm.Close();
             strm.Dispose();
 
             // clearing the newly created mmf.
             mmf.Dispose();
+            mmf = null;
 
             // release the mutex allowing others to write.
             mu.ReleaseMutex();
+            mu.Dispose();
+            mu = null;
 
             // reading the messages.
             reader = new BinaryReader(new MemoryStream(msgsData));
@@ -328,6 +338,11 @@ namespace WebsocketPipe
                 msgs.Add(wp.Serializer.ReadMessage(strm));
             }
 
+            strm.Close();
+            strm.Dispose();
+            reader = null;
+            strm = null;
+            msgsData = null;
             return msgs;
         }
 
