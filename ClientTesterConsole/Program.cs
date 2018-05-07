@@ -14,7 +14,6 @@ namespace ClientTesterConsole
         {
             var dataToSend = new byte[1000];
 
-
             bool usePipe = false;
             var url = new Uri("ws://localhost:8000/Tester");
             WebsocketPipe.IWebsocketPipeDataSocket<byte[]> datasocket;
