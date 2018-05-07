@@ -58,6 +58,8 @@ namespace WebsocketPipe
             Serializer = serializer;
             DataSocket = dataSocket;
             PipeID = Guid.NewGuid().ToString();
+
+            CallOnLog = (d, s) => { };
         }
 
         #endregion
@@ -99,6 +101,11 @@ namespace WebsocketPipe
         /// </summary>
         public WebSocketSharp.Server.WebSocketServer WSServer { get; private set; }
 
+        /// <summary>
+        /// Method to be called on log.
+        /// </summary>
+        public Action<LogData,string> CallOnLog { get; set; }
+
         #endregion
 
         #region connection methods
@@ -123,6 +130,8 @@ namespace WebsocketPipe
             var self = this;
             WSServer.AddWebSocketService<WebsocketPipe<TMessage>>(
                 address.AbsolutePath, () => self);
+
+            WSServer.Log.Output = CallOnLog;
         }
 
         /// <summary>
@@ -145,6 +154,8 @@ namespace WebsocketPipe
             WS.OnOpen += (s, e) => self.OnOpen();
             WS.OnError+= (s, e) => self.OnError(e);
             WS.OnMessage+= (s, e) => self.OnMessage(e);
+
+            WS.Log.Output = CallOnLog;
         }
 
         /// <summary>

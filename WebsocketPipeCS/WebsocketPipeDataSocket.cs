@@ -71,7 +71,15 @@ namespace WebsocketPipe
         /// </summary>
         public int MinMemoryMappedFileCapacity = (int)Math.Pow(2, 12);
 
-        public int MMFHeaderSize { get; private set; } = 5;
+        /// <summary>
+        /// The header size of the mmf file.
+        /// </summary>
+        protected int MMFHeaderSize { get; private set; } = 5;
+
+        /// <summary>
+        /// If below this msg size, the message will be send with the websocket packet. It will be just faster.
+        /// </summary>
+        public int UseInternalPacketDataSendingIfMsgByteSizeIsLessThen { get; set; } = 5000;
 
         #endregion
 
@@ -101,7 +109,7 @@ namespace WebsocketPipe
             return nextPowerOf2(size);
         }
 
-        protected MemoryMappedViewStream GetMemoryMappedViewStream(string id, ref int totalDataSize)
+        protected MemoryMappedViewStream GetDataWritingMemoryMappedViewStream(string id, ref int totalDataSize)
         {
             bool needAppend = false;
             bool needNew = true;
@@ -202,11 +210,25 @@ namespace WebsocketPipe
             byte[] msgBytes = ms.ToArray();
             ms.Close();
             ms.Dispose();
-
+            
             // make the id and write it to the stream.
-            id = MakeValidMmfID(id);
-            byte[] mmfnamebuffer = ASCIIEncoding.ASCII.GetBytes(id);
-            to.Write(mmfnamebuffer, 0, mmfnamebuffer.Length);
+
+            bool isPacketInternal = msgBytes.Length < this.UseInternalPacketDataSendingIfMsgByteSizeIsLessThen;
+            BinaryWriter wr;
+            to.WriteByte((byte)(isPacketInternal ? 1 : 0));
+
+            if(isPacketInternal)
+            {
+                wr = new BinaryWriter(to);
+                wr.Write(msgBytes);
+                return;
+            }
+            else
+            {
+                id = MakeValidMmfID(id);
+                byte[] mmfnamebuffer = ASCIIEncoding.ASCII.GetBytes(id);
+                to.Write(mmfnamebuffer, 0, mmfnamebuffer.Length);
+            }
 
             Mutex mu = new Mutex(false, id + "_mutex");
 
@@ -216,8 +238,8 @@ namespace WebsocketPipe
             }
 
             int totalDataSize = msgBytes.Length + 4;
-            MemoryMappedViewStream strm = GetMemoryMappedViewStream(id, ref totalDataSize);
-            BinaryWriter wr = new BinaryWriter(strm);
+            MemoryMappedViewStream strm = GetDataWritingMemoryMappedViewStream(id, ref totalDataSize);
+            wr = new BinaryWriter(strm);
 
             // we are at the position of the write, and are ready for the write. 
             // at this point we have written 0 @ bit 0, and then the totalDataSize
@@ -247,10 +269,19 @@ namespace WebsocketPipe
         /// <returns></returns>
         public virtual IEnumerable<TMessage> ReadMessages(WebsocketPipe<TMessage> wp, Stream from)
         {
-            // reading the memory mapped file name.
-            byte[] buffer = new byte[from.Length];
+            // reading the memory mapped file name or the msg bytes. 
             from.Seek(0, SeekOrigin.Begin);
+            bool isPacketInternal = from.ReadByte() == 1;
+            byte[] buffer = new byte[from.Length - 1];
             from.Read(buffer, 0, buffer.Length);
+
+            if (isPacketInternal)
+            {
+                // reding from the packet.
+                return new TMessage[] { wp.Serializer.ReadMessage(new MemoryStream(buffer)) };
+            }
+
+            // reading from the memory stream.
             string id = ASCIIEncoding.ASCII.GetString(buffer, 0, buffer.Length);
 
             // calling the mutex to verify reading.
@@ -298,57 +329,6 @@ namespace WebsocketPipe
             }
 
             return msgs;
-            /*
-            while(strm.Position<strm.Length)
-            {
-                // reading the msg legnth.
-                long len = reader.ReadInt64();
-                if(strm.Position+len>strm.Length)
-                {
-                    // over the length of the file, smt went wrong or wrong format. 
-                    // Breaking the procedure.
-                    break;
-                }
-
-                byte[] msg = new byte[len];
-                long startPos = strm.Position;
-                long stopPos = startPos + len;
-                while (strm.Position < stopPos) // the reading.
-                {
-                    bool readMaxInit = (strm.Position + int.MaxValue) < stopPos;
-                    int toRead =  readMaxInit?
-                        int.MaxValue : (int)(stopPos - strm.Position);
-                    reader.Read(msg, (int)(strm.Position - startPos), toRead);
-                }
-
-                msgs.Add(msg);
-            }
-
-            // clear the reader.
-            reader = null;
-
-            // Writing that the stream was read. 
-            strm.Seek(0, SeekOrigin.Begin);
-            strm.WriteByte(1);
-        }
-
-        strm.Close();
-        strm.Dispose();
-
-        // clearing the mmf.
-        mmf.Dispose();
-
-        // release the mutex and get the messages.
-        mu.ReleaseMutex();
-
-        // reading the messages and returning
-        TMessage[] found = msgs.Select(mbits =>
-         {
-             return wp.Serializer.ReadMessage(new MemoryStream(mbits));
-         }).ToArray();
-
-        return found;
-        */
         }
 
         #endregion
