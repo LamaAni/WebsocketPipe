@@ -13,7 +13,7 @@ namespace WebsocketPipe
     /// The pipe will use various methods for data transfer.
     /// NOTE: currently implemented only MappedMemoryFile and Websocket.
     /// </summary>
-    public class WebsocketPipe<TMessage> : WebSocketSharp.Server.WebSocketBehavior
+    public class WebsocketPipe<TMessage> : WebSocketSharp.Server.WebSocketBehavior, IDisposable
         where TMessage:class
     {
         #region construction
@@ -45,7 +45,7 @@ namespace WebsocketPipe
         /// <param name="dataSocket">The data socket to use when sending information, if null then information will
         /// be sent with the wesocket itself (by creating a WebsocketPipeMSGInternalDataSocket).</param>
         public WebsocketPipe(Uri address,
-            IWebsocketPipeDataSocket<TMessage> dataSocket = null,
+            IWebsocketPipeDataSocket<TMessage> dataSocket,
             IWebsocketPipeDataSerializer<TMessage> serializer = null)
         {
             if (serializer == null)
@@ -57,11 +57,17 @@ namespace WebsocketPipe
             Address = address;
             Serializer = serializer;
             DataSocket = dataSocket;
+            PipeID = Guid.NewGuid().ToString();
         }
 
         #endregion
 
         #region General Properties
+
+        /// <summary>
+        /// Random generated id to allow for multiple mmf on the same connection name.
+        /// </summary>
+        public string PipeID { get; private set; } = "";
 
         /// <summary>
         /// The serializer used to sertialize the data to be transferred.
@@ -269,7 +275,7 @@ namespace WebsocketPipe
         /// <param name="msg">The message to send</param>
         /// <param name="clientIds">The client ids to send the msg to, if a server.</param>
         /// /// <param name="asyncOnComplete">The action to take if async. If null, then sync message. (true if succeed, client id or server url)</param>
-        public void Send(TMessage msg, string clientId = null, Action<bool, string> asyncOnComplete = null)
+        public void Send(TMessage msg, string clientId, Action<bool, string> asyncOnComplete = null)
         {
             Send(msg, clientId == null ? null : new string[] { clientId }, asyncOnComplete);
         }
@@ -280,7 +286,7 @@ namespace WebsocketPipe
         /// <param name="msg">The message to send</param>
         /// <param name="clientIds">The client ids to send the msg to, if a server.</param>
         /// /// <param name="asyncOnComplete">The action to take if async. If null, then sync message. (true if succeed, client id or server url)</param>
-        public void Send(TMessage msg, string[] clientIds = null, Action<bool, string> asyncOnComplete = null)
+        public void Send(TMessage msg, string[] clientIds, Action<bool, string> asyncOnComplete = null)
         {
             if (clientIds != null && WS != null)
                 throw new Exception("You are trying to send a message to specific clients from a client WebsocketPipe. This is not A server.");
@@ -338,7 +344,7 @@ namespace WebsocketPipe
         private byte[] GetMessageBytes(TMessage msg, string id)
         {
             MemoryStream strm = new MemoryStream();
-            DataSocket.WriteMessage(this, msg, strm, id);
+            DataSocket.WriteMessage(this, msg, strm, PipeID + "_" + id);
             strm.Close();
             strm.Dispose();
 
@@ -362,11 +368,31 @@ namespace WebsocketPipe
             public TMessage Message { get; private set; }
         }
 
-
         /// <summary>
         /// Called when a message is recived.
         /// </summary>
         public event EventHandler<MessageEventArgs> MessageRecived;
+
+        #endregion
+
+        #region Dispose
+
+
+        public void Dispose()
+        {
+            if (WS != null && WS.IsAlive)
+                WS.Close();
+            if (WSServer != null && WSServer.IsListening)
+                WSServer.Stop();
+
+            if (DataSocket != null)
+                DataSocket.Close();
+
+            WS = null;
+            WSServer = null;
+            DataSocket = null;
+            Serializer = null;
+        }
 
         #endregion
     }

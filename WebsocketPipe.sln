@@ -5,6 +5,10 @@ VisualStudioVersion = 15.0.26430.16
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WebsocketPipeCS", "WebsocketPipeCS\WebsocketPipeCS.csproj", "{1A7330F9-6056-41B7-BE23-9288F8141798}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ServerTesterConsole", "ServerTesterConsole\ServerTesterConsole.csproj", "{BD40618A-5986-462D-B84A-97F0842EAB32}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ClientTesterConsole", "ClientTesterConsole\ClientTesterConsole.csproj", "{D0AB8519-CE22-48DB-9F39-EC47E7746BA7}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -15,6 +19,14 @@ Global
 		{1A7330F9-6056-41B7-BE23-9288F8141798}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1A7330F9-6056-41B7-BE23-9288F8141798}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{1A7330F9-6056-41B7-BE23-9288F8141798}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BD40618A-5986-462D-B84A-97F0842EAB32}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BD40618A-5986-462D-B84A-97F0842EAB32}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BD40618A-5986-462D-B84A-97F0842EAB32}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BD40618A-5986-462D-B84A-97F0842EAB32}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D0AB8519-CE22-48DB-9F39-EC47E7746BA7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D0AB8519-CE22-48DB-9F39-EC47E7746BA7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D0AB8519-CE22-48DB-9F39-EC47E7746BA7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D0AB8519-CE22-48DB-9F39-EC47E7746BA7}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

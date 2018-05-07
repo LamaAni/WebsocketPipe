@@ -32,6 +32,7 @@ namespace WebsocketPipe
     {
         private BinaryFormatter m_formatter;
 
+
         /// <summary>
         /// The binary formatter used when serializing.
         /// </summary>
