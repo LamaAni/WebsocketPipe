@@ -13,12 +13,20 @@ namespace ClientTesterConsole
         static void Main(string[] args)
         {
             var dataToSend = new byte[1000];
-            ClientTester = new WebsocketPipe.WebsocketPipe<byte[]>(
-                new Uri("ws://localhost:8000/Tester"),
-                new WebsocketPipe.WebsocketPipeBinaryFormatingDataSerializer<byte[]>());
+
+
+            bool usePipe = false;
+            var url = new Uri("ws://localhost:8000/Tester");
+            WebsocketPipe.IWebsocketPipeDataSocket<byte[]> datasocket;
+            if (usePipe)
+                datasocket = new WebsocketPipe.WebsocketPipeMemoryMappedFileDataSocket<byte[]>();
+            else datasocket = new WebsocketPipe.WebsocketPipeMSGInternalDataSocket<byte[]>();
+
+            ClientTester = new WebsocketPipe.WebsocketPipe<byte[]>(url,datasocket);
 
             ClientTester.Connect();
             ClientTester.MessageRecived += ClientTester_MessageRecived;
+            System.Threading.Thread.Sleep(100);
             ClientTester.Send(dataToSend, (a, b) => { });
             
             Console.WriteLine("Press <enter> to exit.");

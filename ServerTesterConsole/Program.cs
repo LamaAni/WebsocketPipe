@@ -15,18 +15,19 @@ namespace ServerTesterConsole
         static void Main(string[] args)
         {
             Console.WriteLine("Preparing data...");
-            var url = new Uri("ws://localhost:8000/Tester");
+            
             int pixelNumberOfBytes = 4;
-            int imgWidth = 3000;
+            int imgWidth = 50;
             int imgHeight = imgWidth;
-            bool usePipe = true;
+            bool usePipe = false;
 
-            var dataToSend = new byte[imgWidth * imgHeight * pixelNumberOfBytes];
-
+            var url = new Uri("ws://localhost:8000/Tester");
             WebsocketPipe.IWebsocketPipeDataSocket<byte[]> datasocket;
             if (usePipe)
                 datasocket = new WebsocketPipe.WebsocketPipeMemoryMappedFileDataSocket<byte[]>();
             else datasocket = new WebsocketPipe.WebsocketPipeMSGInternalDataSocket<byte[]>();
+            var dataToSend = new byte[imgWidth * imgHeight * pixelNumberOfBytes];
+
 
             TestServer = new WebsocketPipe.WebsocketPipe<byte[]>(url, datasocket);
 
