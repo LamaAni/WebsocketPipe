@@ -81,6 +81,16 @@ namespace WebsocketPipe
         /// </summary>
         public int UseInternalPacketDataSendingIfMsgByteSizeIsLessThen { get; set; } = 5000;
 
+        /// <summary>
+        /// The total number of memory mapped files created.
+        /// </summary>
+        public int TotalNumberOfMemoryMappedFilesCreated { get; private set; } = 0;
+
+        /// <summary>
+        /// The total active memory mapped files count.
+        /// </summary>
+        public int TotalActiveMemoryMappedFiles { get { return MemoryMapByID.Count; } }
+
         #endregion
 
         #region Memory file managment
@@ -156,6 +166,7 @@ namespace WebsocketPipe
                     MemoryMapByID[id].Item2.Dispose();
                 }
 
+                TotalNumberOfMemoryMappedFilesCreated++;
                 MemoryMappedFile mmf = MemoryMappedFile.CreateOrOpen(id, ToMMFFileSize(totalDataSize) + MMFHeaderSize);
                 strm = mmf.CreateViewStream(0, 0, MemoryMappedFileAccess.ReadWrite);
 
