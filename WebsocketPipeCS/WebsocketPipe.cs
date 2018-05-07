@@ -136,7 +136,7 @@ namespace WebsocketPipe
 
             protected override void OnMessage(WebSocketSharp.MessageEventArgs e)
             {
-                Pipe.OnMessage(e);
+                Pipe.OnDataRecived(e);
                 base.OnMessage(e);
             }
 
@@ -189,7 +189,7 @@ namespace WebsocketPipe
             WS.OnClose += (s, e) => self.OnClose(e);
             WS.OnOpen += (s, e) => self.OnOpen();
             WS.OnError+= (s, e) => self.OnError(e);
-            WS.OnMessage+= (s, e) => self.OnMessage(e);
+            WS.OnMessage+= (s, e) => self.OnDataRecived(e);
 
             WS.Log.Output = (d, s) => LogMethod(d, s);
         }
@@ -209,6 +209,17 @@ namespace WebsocketPipe
 
             WSServer.Start();
             DataSocket.Initialize();
+        }
+
+        /// <summary>
+        /// Either stop listenting or disconnect from the server depending if this is a client or a server.
+        /// </summary>
+        public void Stop()
+        {
+            if (WS != null)
+                Disconnect();
+            if (WSServer != null)
+                StopListening();
         }
 
         /// <summary>
@@ -275,15 +286,15 @@ namespace WebsocketPipe
 
         #region message processing (WebsocketSharp)
 
-        protected void OnError(WebSocketSharp.ErrorEventArgs e)
+        protected virtual void OnError(WebSocketSharp.ErrorEventArgs e)
         {
         }
 
-        protected void OnClose(WebSocketSharp.CloseEventArgs e)
+        protected virtual void OnClose(WebSocketSharp.CloseEventArgs e)
         {
         }
 
-        protected void OnMessage(WebSocketSharp.MessageEventArgs e)
+        protected virtual void OnDataRecived(WebSocketSharp.MessageEventArgs e)
         {
             MemoryStream ms = new MemoryStream(e.RawData);
             var msgs = DataSocket.ReadMessages(this, ms);
@@ -293,16 +304,21 @@ namespace WebsocketPipe
 
             foreach (var msg in msgs)
             {
-                if(MessageRecived!=null)
-                {
-                    MessageEventArgs ea = new MessageEventArgs(msg);
-                    MessageRecived(this, ea);
-                }
+                OnMessage(msg);
             }
         }
 
         protected void OnOpen()
         {
+        }
+
+        protected virtual void OnMessage(TMessage msg)
+        {
+            if (MessageRecived != null)
+            {
+                MessageEventArgs ea = new MessageEventArgs(msg);
+                MessageRecived(this, ea);
+            }
         }
 
         #endregion

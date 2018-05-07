@@ -41,13 +41,47 @@ namespace WebsocketPipe
             get
             {
                 if (m_formatter == null)
-                    m_formatter = new BinaryFormatter();
+                {
+                    m_formatter= CreateBinaryFormatter();
+                }
                 return m_formatter;
             }
             set
             {
                 m_formatter = value;
             }
+        }
+
+        internal class WebsocketPipeBinaryFormatingDataSerializerTypeBinder : System.Runtime.Serialization.SerializationBinder
+        {
+            public Dictionary<string, Type> Mapped { get; private set; } = new Dictionary<string, Type>();
+
+            public override Type BindToType(string assemblyName, string typeName)
+            {
+                if (!Mapped.ContainsKey(typeName))
+                {
+                    System.Reflection.Assembly dataAssembly = typeof(TMessage).Assembly;
+                    Type t = dataAssembly.GetType(typeName);
+                    if (t == null)
+                        t = System.Reflection.Assembly.GetEntryAssembly().GetType(typeName);
+                    if (t == null)
+                        t = System.Reflection.Assembly.GetCallingAssembly().GetType(typeName);
+                    if (t == null)
+                        t = System.Reflection.Assembly.GetExecutingAssembly().GetType(typeName);
+                    Mapped[typeName] = t;
+                }
+                return Mapped[typeName];
+            }
+        }
+
+        private BinaryFormatter CreateBinaryFormatter()
+        {
+            BinaryFormatter bf = new BinaryFormatter();
+
+            bf.TypeFormat = System.Runtime.Serialization.Formatters.FormatterTypeStyle.TypesWhenNeeded;
+            bf.AssemblyFormat = System.Runtime.Serialization.Formatters.FormatterAssemblyStyle.Simple;
+            bf.Binder = new WebsocketPipeBinaryFormatingDataSerializerTypeBinder();
+            return bf;
         }
 
         /// <summary>
