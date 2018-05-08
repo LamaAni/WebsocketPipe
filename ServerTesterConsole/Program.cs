@@ -5,7 +5,6 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-
 namespace ServerTesterConsole
 {
     class Program
@@ -18,15 +17,16 @@ namespace ServerTesterConsole
             Console.WriteLine("Preparing data...");
             
             int pixelNumberOfBytes = 4;
-            int imgWidth = 3000;
+            int imgWidth = 10;
             int imgHeight = imgWidth;
             bool usePipe = true;
+            bool requestResponses = true;
 
             var url = new Uri("ws://localhost:8000/Tester");
-            WebsocketPipe.IWebsocketPipeDataSocket<byte[]> datasocket;
+            WebsocketPipe.IWebsocketPipeDataSocket datasocket;
             if (usePipe)
-                datasocket = new WebsocketPipe.WebsocketPipeMemoryMappedFileDataSocket<byte[]>();
-            else datasocket = new WebsocketPipe.WebsocketPipeMSGInternalDataSocket<byte[]>();
+                datasocket = new WebsocketPipe.WebsocketPipeMemoryMappedFileDataSocket();
+            else datasocket = new WebsocketPipe.WebsocketPipeMSGInternalDataSocket();
             var dataToSend = new byte[imgWidth * imgHeight * pixelNumberOfBytes];
 
             TestServer = new WebsocketPipe.WebsocketPipe<byte[]>(url, datasocket);
@@ -43,35 +43,43 @@ namespace ServerTesterConsole
                 InternalClient.MessageRecived += InternalClient_MessageRecived;
                 InternalClient.Connect();
 
-                TestServer.Send(dataToSend);
+                Console.WriteLine("Sending single message with response. (Will wait for it...)");
+                InternalClient.Send(dataToSend, (rsp) => {
+                    Console.WriteLine("Recived a response from the server with length " + rsp.Length);
+                });
 
                 Stopwatch watch = new Stopwatch();
                 System.IO.MemoryStream ms = new System.IO.MemoryStream();
 
                 // writing first to prepare the serializer.
-                int numberOfSends = 5;
+                int numberOfSends = 1000;
                 int numberOfSerializations = numberOfSends;
 
                 ms.Seek(0, System.IO.SeekOrigin.Begin);
-                InternalClient.Serializer.WriteMessage(ms, dataToSend);
+                InternalClient.Serializer.WriteTo(ms, dataToSend);
                 ms.Seek(0, System.IO.SeekOrigin.Begin);
-                InternalClient.Serializer.ReadMessage(ms);
+                InternalClient.Serializer.ReadFrom(ms);
                 watch.Start();
                 for (int i = 0; i < numberOfSerializations; i++)
                 {
                     ms.Seek(0, System.IO.SeekOrigin.Begin);
-                    InternalClient.Serializer.WriteMessage(ms, dataToSend);
+                    InternalClient.Serializer.WriteTo(ms, dataToSend);
                     ms.Seek(0, System.IO.SeekOrigin.Begin);
-                    InternalClient.Serializer.ReadMessage(ms);
+                    InternalClient.Serializer.ReadFrom(ms);
                 }
+
                 watch.Stop();
                 double serTime = watch.Elapsed.TotalMilliseconds / numberOfSerializations;
                 Console.WriteLine("Serialization time: " + serTime);
+
+                Action<byte[]> response = null;
+                if (requestResponses)
+                    response = (rsp) => { };
                 watch.Reset();
                 watch.Start();
                 
                 for (int i = 0; i < numberOfSends; i++)
-                    InternalClient.Send(dataToSend);
+                    InternalClient.Send(dataToSend, response);
 
                 while (totalRecivedCount < numberOfSends)
                     System.Threading.Thread.Sleep(1);
@@ -84,7 +92,7 @@ namespace ServerTesterConsole
 
                 if(usePipe)
                 {
-                    var mmfds=datasocket as WebsocketPipe.WebsocketPipeMemoryMappedFileDataSocket<byte[]>;
+                    var mmfds=datasocket as WebsocketPipe.WebsocketPipeMemoryMappedFileDataSocket;
                     Console.WriteLine("Total memory mapped file creations: " + mmfds.TotalNumberOfMemoryMappedFilesCreated);
                     Console.WriteLine("Total active memory mapped file: " + mmfds.TotalActiveMemoryMappedFiles);
                 }
@@ -112,10 +120,13 @@ namespace ServerTesterConsole
         static int totalRecivedCount=0;
         private static void TestServer_MessageRecived(object sender, WebsocketPipe.WebsocketPipe<byte[]>.MessageEventArgs e)
         {
+            if (e.RequiresResponse)
+                e.Response = new byte[2];
+
             if(pingpong)
             {
                 Console.WriteLine("Ping at server with " + e.Message.Length + " bytes");
-                TestServer.Send(e.Message, (t, s) => { });
+                TestServer.Send(e.Message);
                 return;
             }
             totalRecivedCount++;

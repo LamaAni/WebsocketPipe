@@ -8,6 +8,34 @@ using System.Threading.Tasks;
 
 namespace WebsocketPipe
 {
+    public static class ExtentionTOIWebsocketPipeDataSerializer
+    {
+        public static byte[] ToBytes<TMessage>(this IWebsocketPipeDataSerializer<TMessage> serializer, TMessage msg)
+            where TMessage : class
+        {
+            MemoryStream strm = new MemoryStream();
+            serializer.WriteTo(strm, msg);
+            strm.Flush();
+            byte[] data = strm.ToArray();
+            strm.Close();
+            strm.Dispose();
+            return data;
+        }
+
+        public static TMessage FromBytes<TMessage>(this IWebsocketPipeDataSerializer<TMessage> serializer, byte[] data)
+             where TMessage : class
+        {
+            if (data.Length == 0)
+                return null;
+
+            MemoryStream strm = new MemoryStream(data);
+            TMessage msg = serializer.ReadFrom(strm);
+            strm.Close();
+            strm.Dispose();
+            return msg;
+        }
+    }
+
     public interface IWebsocketPipeDataSerializer<TMessage>
         where TMessage : class
     {
@@ -17,14 +45,14 @@ namespace WebsocketPipe
         /// <param name="strm">The stream to read from</param>
         /// <param name="mtype">the message type</param>
         /// <returns>The message</returns>
-        TMessage ReadMessage(Stream strm);
+        TMessage ReadFrom(Stream strm);
 
         /// <summary>
         /// Writes a message to the stream.
         /// </summary>
         /// <param name="strm">The stream to write to</param>
         /// <param name="msg">The message</param>
-        void WriteMessage(Stream strm, TMessage msg);
+        void WriteTo(Stream strm, TMessage msg);
     }
 
     public class WebsocketPipeBinaryFormatingDataSerializer<TMessage>: IWebsocketPipeDataSerializer<TMessage>
@@ -90,7 +118,7 @@ namespace WebsocketPipe
         /// <param name="strm">The stream to read from</param>
         /// <param name="mtype">the message type</param>
         /// <returns>The message</returns>
-        public TMessage ReadMessage(Stream strm)
+        public TMessage ReadFrom(Stream strm)
         {
             // No type conversion since
             return Formatter.Deserialize(strm) as TMessage;
@@ -101,9 +129,10 @@ namespace WebsocketPipe
         /// </summary>
         /// <param name="strm">The stream to write to</param>
         /// <param name="msg">The message</param>
-        public void WriteMessage(Stream strm, TMessage msg)
+        public void WriteTo(Stream strm, TMessage msg)
         {
-            Formatter.Serialize(strm, msg);
+            if (msg != null)
+                Formatter.Serialize(strm, msg);
         }
     }
 }

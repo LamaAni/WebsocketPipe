@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using WebSocketSharp;
 
@@ -33,7 +34,7 @@ namespace WebsocketPipe
             : this(address, null, serializer)
         {
             if (autoDetectDataSocketMethod && address.IsLoopback)
-                DataSocket = new WebsocketPipeMemoryMappedFileDataSocket<TMessage>();
+                DataSocket = new WebsocketPipeMemoryMappedFileDataSocket();
         }
 
         /// <summary>
@@ -45,14 +46,14 @@ namespace WebsocketPipe
         /// <param name="dataSocket">The data socket to use when sending information, if null then information will
         /// be sent with the wesocket itself (by creating a WebsocketPipeMSGInternalDataSocket).</param>
         public WebsocketPipe(Uri address,
-            IWebsocketPipeDataSocket<TMessage> dataSocket,
+            IWebsocketPipeDataSocket dataSocket,
             IWebsocketPipeDataSerializer<TMessage> serializer = null)
         {
             if (serializer == null)
                 serializer = new WebsocketPipeBinaryFormatingDataSerializer<TMessage>();
 
             if (dataSocket == null)
-                dataSocket = new WebsocketPipeMSGInternalDataSocket<TMessage>();
+                dataSocket = new WebsocketPipeMSGInternalDataSocket();
 
             Address = address;
             Serializer = serializer;
@@ -80,7 +81,15 @@ namespace WebsocketPipe
         /// The data socekt to use when sending data. If null, data is sent with the websocket request
         /// itself.
         /// </summary>
-        public IWebsocketPipeDataSocket<TMessage> DataSocket { get; set; }
+        public IWebsocketPipeDataSocket DataSocket { get; set; }
+
+        /// <summary>
+        /// The total number of messages recived.
+        /// </summary>
+        public long TotalMessageRecivedEvents { get; private set; }
+
+
+        public const String SendAsClientWebsocketID = "_as_client";
 
         #endregion
 
@@ -106,6 +115,43 @@ namespace WebsocketPipe
         /// </summary>
         public Action<LogData,string> LogMethod { get; set; }
 
+        TimeSpan? m_WaitTime = null;
+
+        public TimeSpan WaitTime
+        {
+            get
+            {
+                if (m_WaitTime == null)
+                    return TimeSpan.MinValue;
+                return m_WaitTime.Value;
+            }
+            set
+            {
+                if (WS != null)
+                    WS.WaitTime = value;
+                else if (WSServer != null)
+                    WSServer.WaitTime = value;
+                m_WaitTime = value;
+            }
+        }
+
+        #endregion
+
+        #region Responce collections
+
+        internal class ResponseWaitHandle: EventWaitHandle
+        {
+            public ResponseWaitHandle()
+                : base(false, EventResetMode.ManualReset)
+            {
+            }
+
+            public TMessage Response { get; internal set; } = null;
+        }
+
+        internal Dictionary<string, ResponseWaitHandle> PendingResponseWaitHandles { get; private set; }
+            = new Dictionary<string, ResponseWaitHandle>();
+
         #endregion
 
         #region connection methods
@@ -124,25 +170,25 @@ namespace WebsocketPipe
 
             protected override void OnClose(CloseEventArgs e)
             {
-                Pipe.OnClose(e);
+                Pipe.OnClose(e, this.ID);
                 base.OnClose(e);
             }
 
             protected override void OnError(WebSocketSharp.ErrorEventArgs e)
             {
-                Pipe.OnError(e);
+                Pipe.OnError(e, this.ID);
                 base.OnError(e);
             }
 
             protected override void OnMessage(WebSocketSharp.MessageEventArgs e)
             {
-                Pipe.OnDataRecived(e);
+                Pipe.OnDataRecived(e, this.ID);
                 base.OnMessage(e);
             }
 
             protected override void OnOpen()
             {
-                Pipe.OnOpen();
+                Pipe.OnOpen(this.ID);
                 base.OnOpen();
             }
         }
@@ -162,12 +208,16 @@ namespace WebsocketPipe
 
             string serverURL = address.Scheme + "://" + address.Host + ":" + Address.Port;
             WSServer = new WebSocketSharp.Server.WebSocketServer(serverURL);
-            
+
             // Creates a server.
             WSServer.AddWebSocketService<WebsocketConnection>(
                 address.AbsolutePath, () => new WebsocketConnection(this));
 
             WSServer.Log.Output = (d, s) => LogMethod(d, s);
+
+            if (m_WaitTime == null)
+                m_WaitTime = WSServer.WaitTime;
+            else WSServer.WaitTime = WaitTime;
         }
 
         /// <summary>
@@ -185,13 +235,16 @@ namespace WebsocketPipe
             }
 
             WS = new WebSocket(address.ToString());
-            var self = this;
-            WS.OnClose += (s, e) => self.OnClose(e);
-            WS.OnOpen += (s, e) => self.OnOpen();
-            WS.OnError+= (s, e) => self.OnError(e);
-            WS.OnMessage+= (s, e) => self.OnDataRecived(e);
+            WS.OnClose += (s, e) => OnClose(e, SendAsClientWebsocketID);
+            WS.OnOpen += (s, e) =>OnOpen(SendAsClientWebsocketID);
+            WS.OnError+= (s, e) => OnError(e, SendAsClientWebsocketID);
+            WS.OnMessage+= (s, e) => OnDataRecived(e, SendAsClientWebsocketID);
 
-            WS.Log.Output = (d, s) => LogMethod(d, s);
+            WS.Log.Output = (d, s) =>LogMethod(d, s);
+
+            if (m_WaitTime == null)
+                m_WaitTime = WS.WaitTime;
+            else WS.WaitTime = WaitTime;
         }
 
         /// <summary>
@@ -199,7 +252,6 @@ namespace WebsocketPipe
         /// </summary>
         public void Listen()
         {
-
             if (WS != null)
                 throw new Exception("Cannot both be a server and a client." +
                     " Please use Connect if you are connecting to a server or Listen to create a server.");
@@ -208,6 +260,7 @@ namespace WebsocketPipe
                 MakeServer();
 
             WSServer.Start();
+            
             DataSocket.Initialize();
         }
 
@@ -272,6 +325,7 @@ namespace WebsocketPipe
 
             if (WS == null)
                 return;
+
             if (!WS.IsAlive)
                 return;
 
@@ -286,38 +340,66 @@ namespace WebsocketPipe
 
         #region message processing (WebsocketSharp)
 
-        protected virtual void OnError(WebSocketSharp.ErrorEventArgs e)
+        protected void OnError(WebSocketSharp.ErrorEventArgs e, string id)
         {
         }
 
-        protected virtual void OnClose(WebSocketSharp.CloseEventArgs e)
+        protected void OnClose(WebSocketSharp.CloseEventArgs e, string id)
         {
+            TriggerWaitHandle(id, null);
         }
 
-        protected virtual void OnDataRecived(WebSocketSharp.MessageEventArgs e)
+        private bool TriggerWaitHandle(string datasocketID, TMessage msg)
         {
+            if (PendingResponseWaitHandles.ContainsKey(datasocketID))
+            {
+                PendingResponseWaitHandles[datasocketID].Response = msg;
+                PendingResponseWaitHandles[datasocketID].Set();
+                return true;
+            }
+            return false;
+        }
+
+        protected void OnDataRecived(WebSocketSharp.MessageEventArgs e, string id)
+        {
+            string datasocketId = MakeDataSocketID(id);
+
+            TotalMessageRecivedEvents++;
             MemoryStream ms = new MemoryStream(e.RawData);
-            var msgs = DataSocket.ReadMessages(this, ms);
+            var msgs = DataSocket.ReadMessages(ms);
             ms.Close();
             ms.Dispose();
             ms = null;
 
             foreach (var msg in msgs)
             {
-                OnMessage(msg);
+                MessageEventArgs me = new MessageEventArgs(Serializer.FromBytes(msg.Data), msg.NeedsResponse, datasocketId);
+
+                if (TriggerWaitHandle(datasocketId, me.Message)) // this message is a response.
+                    continue;
+
+                OnMessage(me);
+
+                if(me.RequiresResponse)
+                {
+                    Send(me.Response, id);
+                }
             }
         }
 
-        protected void OnOpen()
+        protected void OnOpen(string id)
         {
         }
 
-        protected virtual void OnMessage(TMessage msg)
+        #endregion
+
+        #region Message processing
+
+        protected virtual void OnMessage(MessageEventArgs e)
         {
             if (MessageRecived != null)
             {
-                MessageEventArgs ea = new MessageEventArgs(msg);
-                MessageRecived(this, ea);
+                MessageRecived(this, e);
             }
         }
 
@@ -329,10 +411,10 @@ namespace WebsocketPipe
         /// Sends a message to the server/ all clients (if is a server).
         /// </summary>
         /// <param name="msg">The message to send</param>
-        /// /// <param name="asyncOnComplete">The action to take if async. If null, then sync message. (true if succeed, client id or server url)</param>
-        public void Send(TMessage msg, Action<bool, string> asyncOnComplete = null)
+        /// /// <param name="response">If not null, the thread will wait for response.</param>
+        public void Send(TMessage msg, Action<TMessage> response = null)
         {
-            Send(msg, (string[])null, asyncOnComplete);
+            Send(msg, (string[])null, response);
         }
 
         /// <summary>
@@ -340,10 +422,10 @@ namespace WebsocketPipe
         /// </summary>
         /// <param name="msg">The message to send</param>
         /// <param name="clientIds">The client ids to send the msg to, if a server.</param>
-        /// /// <param name="asyncOnComplete">The action to take if async. If null, then sync message. (true if succeed, client id or server url)</param>
-        public void Send(TMessage msg, string clientId, Action<bool, string> asyncOnComplete = null)
+        /// /// <param name="response">If not null, the thread will wait for response from the client.</param>
+        public void Send(TMessage msg, string clientId, Action<TMessage> response = null)
         {
-            Send(msg, clientId == null ? null : new string[] { clientId }, asyncOnComplete);
+            Send(msg, clientId == null ? null : new string[] { clientId }, response);
         }
 
         /// <summary>
@@ -351,71 +433,135 @@ namespace WebsocketPipe
         /// </summary>
         /// <param name="msg">The message to send</param>
         /// <param name="clientIds">The client ids to send the msg to, if a server.</param>
-        /// /// <param name="asyncOnComplete">The action to take if async. If null, then sync message. (true if succeed, client id or server url)</param>
-        public void Send(TMessage msg, string[] clientIds, Action<bool, string> asyncOnComplete = null)
+        /// /// <param name="response">If not null, the thread will wait for response.</param>
+        public void Send(TMessage msg, string[] clientIds, Action<TMessage> response = null)
         {
             if (clientIds != null && WS != null)
                 throw new Exception("You are trying to send a message to specific clients from a client WebsocketPipe. This is not A server.");
 
+            WebsocketPipeMessageInfo minfo = new WebsocketPipeMessageInfo(Serializer.ToBytes<TMessage>(msg), null, response != null);
+
             if (WS != null)
             {
-                byte[] msgBytes = GetMessageBytes(msg, "to_server");
+                minfo.DataSocketId = MakeDataSocketID(SendAsClientWebsocketID);
 
-                if (asyncOnComplete != null)
+                if (response == null)
                 {
-                    WS.SendAsync(msgBytes, (t) =>
-                    {
-                        asyncOnComplete(t, WS.Url.ToString());
-                    });
+                    // Send async and do nothing.
+                    WS.SendAsync(GetWebsocketMessageData(minfo), (t) => { });
                 }
                 else
                 {
-                    WS.Send(msgBytes);
+                    // need to send and wait for response.
+                    ResponseWaitHandle hndl = new ResponseWaitHandle();
+                    PendingResponseWaitHandles[minfo.DataSocketId] = hndl;
+                    WS.SendAsync(GetWebsocketMessageData(minfo),(t)=>
+                    {
+                        if(!t)
+                        {
+                            // not complete sending. 
+                            // error. 
+                            // response is null.
+                            hndl.Response = null;
+                            hndl.Set();
+                        }
+                    });
+
+                    hndl.WaitOne();
+
+                    // Removing the wait handle.
+                    PendingResponseWaitHandles.Remove(minfo.DataSocketId);
+
+                    // The response to the sending.
+                    response(hndl.Response);
                 }
             }
             else if (WSServer != null)
             {
-                // finding clients with matching ids.
-                List<WebSocketSharp.Server.IWebSocketSession> clients =
-                    new List<WebSocketSharp.Server.IWebSocketSession>();
+                IEnumerable<WebSocketSharp.Server.IWebSocketSession> sessions = FindValidSession(clientIds);
 
-                HashSet<string> clientSet = clientIds==null? null : new HashSet<string>(clientIds);
-                Func<string, bool> isClientOK = (id) =>
-                 {
-                     if (clientSet == null)
-                         return true;
-                     return clientSet.Contains(id);
-                 };
-
-                var sessions = WSServer.WebSocketServices.Hosts.SelectMany(
-                    host => host.Sessions.Sessions.Where(s => isClientOK(s.ID)));
+                List<ResponseWaitHandle> waitHandles = response == null ? null : new List<ResponseWaitHandle>();
 
                 // Sending to the specific clients.
                 foreach (var client in sessions)
                 {
-                    byte[] msgBytes = GetMessageBytes(msg, client.ID);
-                    if (asyncOnComplete != null)
-                        client.Context.WebSocket.SendAsync(msgBytes, (t) =>
+                    minfo.DataSocketId = MakeDataSocketID(client.ID);
+
+                    if (response == null)
+                    {
+                        // Send async and do nothing.
+                        client.Context.WebSocket.SendAsync(GetWebsocketMessageData(minfo), (t) => { });
+                    }
+                    else
+                    {
+                        // Send async and wait for response.
+                        ResponseWaitHandle hndl = new ResponseWaitHandle();
+                        PendingResponseWaitHandles[minfo.DataSocketId] = hndl;
+                        client.Context.WebSocket.SendAsync(GetWebsocketMessageData(minfo), (t) =>
                         {
-                            asyncOnComplete(t, client.ID);
+                            if (!t)
+                            {
+                                // not complete sending. 
+                                // error. 
+                                // response is null.
+                                hndl.Response = null;
+                                hndl.Set();
+                            }
                         });
-                    else client.Context.WebSocket.Send(msgBytes);
+                    }
                 }
 
+                if (waitHandles != null && waitHandles.Count > 0)
+                {
+                    // waiting
+                    foreach (var hndl in waitHandles)
+                        hndl.WaitOne(); // all need to complete.
+
+                    foreach (var rmsg in waitHandles.Select(h => h.Response))
+                        response(rmsg);
+                }
             }
             else throw new Exception("You are not connected to any servers." +
                 "Please use method Connect to connect to a server or method listen to wait for others to connecto to you.");
         }
 
-        private byte[] GetMessageBytes(TMessage msg, string id)
+        private string MakeDataSocketID(string id)
+        {
+            return PipeID + "_" + id;
+        }
+
+        private IEnumerable<WebSocketSharp.Server.IWebSocketSession> FindValidSession(string[] clientIds)
+        {
+            // finding clients with matching ids.
+            List<WebSocketSharp.Server.IWebSocketSession> clients =
+                new List<WebSocketSharp.Server.IWebSocketSession>();
+
+            HashSet<string> clientSet = clientIds == null ? null : new HashSet<string>(clientIds);
+            Func<string, bool> isClientOK = (id) =>
+            {
+                if (clientSet == null)
+                    return true;
+                return clientSet.Contains(id);
+            };
+
+            var sessions = WSServer.WebSocketServices.Hosts.SelectMany(
+                host => host.Sessions.Sessions.Where(s => isClientOK(s.ID)));
+            return sessions;
+        }
+
+        private void doSend(TMessage msg, Action<bool, string> asyncOnComplete, string id)
+        {
+
+        }
+
+        private byte[] GetWebsocketMessageData(WebsocketPipeMessageInfo msg)
         {
             MemoryStream strm = new MemoryStream();
-            DataSocket.WriteMessage(this, msg, strm, PipeID + "_" + id);
+            DataSocket.WriteMessage(msg, strm);
+            byte[] data = strm.ToArray();
             strm.Close();
             strm.Dispose();
-
-            byte[] msgBytes = strm.ToArray();
-            return msgBytes;
+            return data;
         }
 
         #endregion
@@ -427,11 +573,32 @@ namespace WebsocketPipe
         /// </summary>
         public class MessageEventArgs : EventArgs
         {
-            public MessageEventArgs(TMessage msg)
+            internal MessageEventArgs(TMessage msg, bool needsResponse, string wsockID)
             {
                 Message = msg;
+                RequiresResponse = needsResponse;
+                WebsocketID = wsockID;
             }
+
+            /// <summary>
+            /// If true this message requires a response of type TMessage. Can be null.
+            /// </summary>
+            public bool RequiresResponse { get; private set; }
+
+            /// <summary>
+            /// The message.
+            /// </summary>
             public TMessage Message { get; private set; }
+
+            /// <summary>
+            /// The response to send back if one is needed.
+            /// </summary>
+            public TMessage Response { get; set; }
+
+            /// <summary>
+            /// The id of the wensocket.
+            /// </summary>
+            public string WebsocketID { get; private set; }
         }
 
         /// <summary>
