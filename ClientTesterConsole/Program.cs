@@ -16,10 +16,10 @@ namespace ClientTesterConsole
 
             bool usePipe = true;
             var url = new Uri("ws://localhost:8000/Tester");
-            WebsocketPipe.IWebsocketPipeDataSocket<byte[]> datasocket;
+            WebsocketPipe.IWebsocketPipeDataSocket datasocket;
             if (usePipe)
-                datasocket = new WebsocketPipe.WebsocketPipeMemoryMappedFileDataSocket<byte[]>();
-            else datasocket = new WebsocketPipe.WebsocketPipeMSGInternalDataSocket<byte[]>();
+                datasocket = new WebsocketPipe.WebsocketPipeMemoryMappedFileDataSocket();
+            else datasocket = new WebsocketPipe.WebsocketPipeMSGInternalDataSocket();
 
 
             ClientTester = new WebsocketPipe.WebsocketPipe<byte[]>(url,datasocket);
@@ -32,7 +32,7 @@ namespace ClientTesterConsole
             
 
             System.Threading.Thread.Sleep(100);
-            ClientTester.Send(dataToSend, (a, b) => { });
+            ClientTester.Send(dataToSend, (esp) => { });
             
             Console.WriteLine("Press <enter> to exit.");
             Console.ReadLine();
