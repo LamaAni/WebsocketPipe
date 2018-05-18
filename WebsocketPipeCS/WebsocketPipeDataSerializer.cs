@@ -86,20 +86,38 @@ namespace WebsocketPipe
 
             public override Type BindToType(string assemblyName, string typeName)
             {
-                if (!Mapped.ContainsKey(typeName))
+                string bindName = assemblyName + typeName;
+                if (!Mapped.ContainsKey(bindName))
                 {
                     System.Reflection.Assembly dataAssembly = typeof(TMessage).Assembly;
                     Type t = dataAssembly.GetType(typeName);
                     if (t == null)
-                        t = System.Reflection.Assembly.GetEntryAssembly().GetType(typeName);
+                        t = getTypeFromAssembly(typeName,System.Reflection.Assembly.GetEntryAssembly());
                     if (t == null)
-                        t = System.Reflection.Assembly.GetCallingAssembly().GetType(typeName);
+                        t = getTypeFromAssembly(typeName, System.Reflection.Assembly.GetCallingAssembly());
                     if (t == null)
-                        t = System.Reflection.Assembly.GetExecutingAssembly().GetType(typeName);
-                    Mapped[typeName] = t;
+                        t = getTypeFromAssembly(typeName, System.Reflection.Assembly.GetExecutingAssembly());
+                    if (t == null)
+                        t = getTypeFromAssembly(typeName, GetAssemblyByName(assemblyName));
+                    if (t == null)
+                        throw new Exception("Cannot find type with typename " + typeName + " that orinated in assembly " + assemblyName);
+                    Mapped[bindName] = t;
                 }
-                return Mapped[typeName];
+                return Mapped[bindName];
             }
+        }
+
+        static System.Reflection.Assembly GetAssemblyByName(string name)
+        {
+            return AppDomain.CurrentDomain.GetAssemblies().
+                   SingleOrDefault(assembly => assembly.GetName().Name == name);
+        }
+
+        static Type getTypeFromAssembly(string typeName, System.Reflection.Assembly asm)
+        {
+            if (asm == null)
+                return null;
+            return asm.GetType(typeName);
         }
 
         private BinaryFormatter CreateBinaryFormatter()
@@ -131,8 +149,7 @@ namespace WebsocketPipe
         /// <param name="msg">The message</param>
         public void WriteTo(Stream strm, TMessage msg)
         {
-            if (msg != null)
-                Formatter.Serialize(strm, msg);
+            Formatter.Serialize(strm, msg);
         }
     }
 }

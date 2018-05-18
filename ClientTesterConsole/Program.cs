@@ -23,13 +23,12 @@ namespace ClientTesterConsole
 
 
             ClientTester = new WebsocketPipe.WebsocketPipe<byte[]>(url,datasocket);
-            ClientTester.LogMethod = (d, s) =>
+            ClientTester.LogMethod = (s) =>
             {
-                Console.WriteLine(d.ToString());
+                Console.WriteLine(s);
             };
             ClientTester.MessageRecived += ClientTester_MessageRecived;
             ClientTester.Connect();
-            
 
             System.Threading.Thread.Sleep(100);
             ClientTester.Send(dataToSend, (esp) => { });

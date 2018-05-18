@@ -175,7 +175,11 @@ namespace WebsocketPipe
                 }
 
                 TotalNumberOfMemoryMappedFilesCreated++;
-                MemoryMappedFile mmf = MemoryMappedFile.CreateOrOpen(id, ToMMFFileSize(totalDataSize));
+
+                // dispose the old.
+                if (MemoryMapByID.ContainsKey(id))
+                    MemoryMapByID[id].Item2.Dispose();
+                MemoryMappedFile mmf = MemoryMappedFile.CreateNew(id, ToMMFFileSize(totalDataSize));
                 strm = mmf.CreateViewStream(0, 0, MemoryMappedFileAccess.ReadWrite);
 
                 wr = new BinaryWriter(strm);
@@ -395,17 +399,6 @@ namespace WebsocketPipe
         public virtual IEnumerable<WebsocketPipeMessageInfo> ReadMessages(Stream from)
         {
             return new WebsocketPipeMessageInfo[] { WebsocketPipeMessageInfo.FromStream(from) };
-
-            //// reading the message from the websocket data.
-            //bool hasMessage = from.ReadByte() == 1;
-            //bool needsResponse = from.ReadByte() == 1;
-
-            //// reading the messages.
-            //BinaryReader reader = new BinaryReader(from);
-            //byte[] msg = reader.ReadBytes((int)from.Length - HeaderSize);
-
-            // creating the array.
-            //return new WebsocketPipeMessageInfo[] { new WebsocketPipeMessageInfo(msg, null, needsResponse) };
         }
 
         public virtual void Initialize()
