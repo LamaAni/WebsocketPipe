@@ -13,8 +13,18 @@ namespace WebsocketPipe
         public static byte[] ToBytes<TMessage>(this IWebsocketPipeDataSerializer<TMessage> serializer, TMessage msg)
             where TMessage : class
         {
+            if (msg == null)
+                return new byte[0];
+
             MemoryStream strm = new MemoryStream();
-            serializer.WriteTo(strm, msg);
+            try
+            {
+                serializer.WriteTo(strm, msg);
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Serializer failed to serialize a message)", ex);
+            }
             strm.Flush();
             byte[] data = strm.ToArray();
             strm.Close();
@@ -29,7 +39,15 @@ namespace WebsocketPipe
                 return null;
 
             MemoryStream strm = new MemoryStream(data);
-            TMessage msg = serializer.ReadFrom(strm);
+            TMessage msg;
+            try
+            {
+                msg = serializer.ReadFrom(strm);
+            }
+            catch (Exception ex)
+            {
+                throw new Exception("Serializer failed to deserialize a message (" + data.Length + " bytes)", ex);
+            }
             strm.Close();
             strm.Dispose();
             return msg;
@@ -58,25 +76,24 @@ namespace WebsocketPipe
     public class WebsocketPipeBinaryFormatingDataSerializer<TMessage>: IWebsocketPipeDataSerializer<TMessage>
         where TMessage: class
     {
-        private BinaryFormatter m_formatter;
-
+        private WebsocketPipeBinaryFormatingDataSerializerTypeBinder m_Binder;
 
         /// <summary>
         /// The binary formatter used when serializing.
         /// </summary>
-        public BinaryFormatter Formatter
+        internal WebsocketPipeBinaryFormatingDataSerializerTypeBinder Binder
         {
             get
             {
-                if (m_formatter == null)
+                if (m_Binder == null)
                 {
-                    m_formatter= CreateBinaryFormatter();
+                    m_Binder = new WebsocketPipeBinaryFormatingDataSerializerTypeBinder();
                 }
-                return m_formatter;
+                return m_Binder;
             }
             set
             {
-                m_formatter = value;
+                m_Binder = value;
             }
         }
 
@@ -126,7 +143,7 @@ namespace WebsocketPipe
 
             bf.TypeFormat = System.Runtime.Serialization.Formatters.FormatterTypeStyle.TypesWhenNeeded;
             bf.AssemblyFormat = System.Runtime.Serialization.Formatters.FormatterAssemblyStyle.Simple;
-            bf.Binder = new WebsocketPipeBinaryFormatingDataSerializerTypeBinder();
+            bf.Binder = Binder;
             return bf;
         }
 
@@ -139,7 +156,7 @@ namespace WebsocketPipe
         public TMessage ReadFrom(Stream strm)
         {
             // No type conversion since
-            return Formatter.Deserialize(strm) as TMessage;
+            return CreateBinaryFormatter().Deserialize(strm) as TMessage;
         }
 
         /// <summary>
@@ -149,7 +166,7 @@ namespace WebsocketPipe
         /// <param name="msg">The message</param>
         public void WriteTo(Stream strm, TMessage msg)
         {
-            Formatter.Serialize(strm, msg);
+            CreateBinaryFormatter().Serialize(strm, msg);
         }
     }
 }

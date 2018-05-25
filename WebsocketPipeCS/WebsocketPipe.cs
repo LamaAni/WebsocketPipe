@@ -111,21 +111,23 @@ namespace WebsocketPipe
         /// </summary>
         public WebSocketSharp.Server.WebSocketServer WSServer { get; private set; }
 
+        TimeSpan? m_WaitTimeout = null;
 
-        TimeSpan? m_WaitTime = null;
-
-        public TimeSpan WaitTime
+        /// <summary>
+        /// The timespan to wait before throwing timeout.
+        /// </summary>
+        public TimeSpan WaitTimeout
         {
             get
             {
-                if (m_WaitTime == null)
+                if (m_WaitTimeout == null)
                     if (IsListening)
                         return WSServer.WaitTime;
                     else if (IsConnected)
                         return WS.WaitTime;
                     else return TimeSpan.MinValue;
 
-                return m_WaitTime.Value;
+                return m_WaitTimeout.Value;
             }
             set
             {
@@ -133,7 +135,22 @@ namespace WebsocketPipe
                     WS.WaitTime = value;
                 else if (WSServer != null)
                     WSServer.WaitTime = value;
-                m_WaitTime = value;
+                m_WaitTimeout = value;
+            }
+        }
+
+        /// <summary>
+        /// The time to wait before timeout, in ms.
+        /// </summary>
+        public int Timeout
+        {
+            get
+            {
+                return Convert.ToInt32(WaitTimeout.TotalMilliseconds);
+            }
+            set
+            {
+                WaitTimeout = new TimeSpan(0, 0, 0, 0, value);
             }
         }
 
@@ -265,9 +282,9 @@ namespace WebsocketPipe
 
             WSServer.Log.Output = (d, s) => WebsocketLogMessage(null, d.ToString());
 
-            if (m_WaitTime == null)
-                m_WaitTime = WSServer.WaitTime;
-            else WSServer.WaitTime = WaitTime;
+            if (m_WaitTimeout == null)
+                m_WaitTimeout = WSServer.WaitTime;
+            else WSServer.WaitTime = WaitTimeout;
         }
 
         /// <summary>
@@ -291,9 +308,9 @@ namespace WebsocketPipe
             WS.OnMessage+= (s, e) => OnDataRecived(e, SendAsClientWebsocketID);
             WS.Log.Output = (d, s) => WebsocketLogMessage(SendAsClientWebsocketID, d.ToString());
 
-            if (m_WaitTime == null)
-                m_WaitTime = WS.WaitTime;
-            else WS.WaitTime = WaitTime;
+            if (m_WaitTimeout == null)
+                m_WaitTimeout = WS.WaitTime;
+            else WS.WaitTime = WaitTimeout;
         }
 
         /// <summary>
@@ -483,11 +500,6 @@ namespace WebsocketPipe
                     continue;
 
                 OnMessage(me);
-
-                if(me.RequiresResponse)
-                {
-                    Send(me.Response, id);
-                }
             }
             watch.Stop();
             WriteLogMessage(id,"Handled evnets for " + msgs.Length + " messages [ms]: " + watch.Elapsed.TotalMilliseconds);
@@ -501,12 +513,36 @@ namespace WebsocketPipe
 
         #region Message processing
 
+        private Queue<MessageEventArgs> m_pendingMessages = new Queue<MessageEventArgs>();
+        private Task m_messageProcessingTask = null;
+
+        private void DoMessageProcessing()
+        {
+            while (m_pendingMessages.Count > 0)
+            {
+                MessageEventArgs e = m_pendingMessages.Dequeue();
+                if (MessageRecived != null)
+                {
+                    MessageRecived(this, e);
+                }
+
+                if (e.RequiresResponse)
+                {
+                    Send(e.Response, e.WebsocketID);
+                }
+            }
+            m_messageProcessingTask = null;
+        }
+
         protected virtual void OnMessage(MessageEventArgs e)
         {
-            if (MessageRecived != null)
-            {
-                MessageRecived(this, e);
-            }
+            m_pendingMessages.Enqueue(e);
+
+            if (m_messageProcessingTask != null && m_messageProcessingTask.Status == TaskStatus.Running)
+                return;
+
+            m_messageProcessingTask = new Task(DoMessageProcessing);
+            m_messageProcessingTask.Start();
         }
 
         protected virtual void OnClose(MessageEventArgs e)
@@ -618,7 +654,8 @@ namespace WebsocketPipe
                 foreach (var sender in senders)
                 {
                     minfo.DataSocketId = sender.socketID;
-                    sender.session.SendAsync(GetWebsocketMessageData(minfo), (t) => { });
+                    sender.session.Send(GetWebsocketMessageData(minfo));
+                    //sender.session.SendAsync(GetWebsocketMessageData(minfo), (t) => { });
                 }
             }
             else
@@ -631,126 +668,34 @@ namespace WebsocketPipe
                 foreach (var sender in senders)
                 {
                     minfo.DataSocketId = sender.socketID;
-                    sender.session.SendAsync(GetWebsocketMessageData(minfo), (t) =>
-                    {
-                        if (!t)
-                        {
-                            // not complete sending. 
-                            // error. 
-                            // response is null.
-                            sender.hndl.Response = null;
-                            sender.hndl.Set();
-                        }
-                    });
+                    sender.session.Send(GetWebsocketMessageData(minfo));
+                    //sender.session.SendAsync(GetWebsocketMessageData(minfo), (t) =>
+                    //{
+                    //    if (!t)
+                    //    {
+                    //        // not complete sending. 
+                    //        // error. 
+                    //        // response is null.
+                    //        sender.hndl.Response = null;
+                    //        sender.hndl.Set();
+                    //    }
+                    //});
                 }
 
                 bool timedout = false;
                 foreach (var sender in senders)
-                    if (!sender.hndl.WaitOne(WaitTime))
+                    if (!sender.hndl.WaitOne(WaitTimeout))
                         timedout = true;
 
                 // check if timeout.
                 //bool timedout = senders.Any(s => s.hndl.WaitOne(0));
 
                 if (timedout)
-                    throw new Exception("Timedout waiting for response. Waited [ms] " + WaitTime.TotalMilliseconds);
+                    throw new Exception("Timedout waiting for response. Waited [ms] " + WaitTimeout.TotalMilliseconds);
 
                 foreach (var sender in senders)
                     response(sender.hndl.Response);
             }
-
-            /*
-            foreach (var sender in senders)
-            {
-                minfo.DataSocketId = sender.socketID;
-                if (response == null)
-                    sender.session.SendAsync(GetWebsocketMessageData(minfo), (t) => { });
-                else
-                {
-                    PendingResponseWaitHandles[minfo.DataSocketId] = hndl;
-                }
-            }
-           
-            if (WS != null)
-            {
-
-                minfo.DataSocketId = ToDataSocketID(SendAsClientWebsocketID);
-
-                if (response == null)
-                {
-                    // Send async and do nothing.
-                    WS.SendAsync(GetWebsocketMessageData(minfo), (t) => { });
-                }
-                else
-                {
-                    // need to send and wait for response.
-                    ResponseWaitHandle hndl = new ResponseWaitHandle();
-                    
-                    WS.SendAsync(GetWebsocketMessageData(minfo),(t)=>
-                    {
-                        if(!t)
-                        {
-                            // not complete sending. 
-                            // error. 
-                            // response is null.
-                            hndl.Response = null;
-                            hndl.Set();
-                        }
-                    });
-
-                    hndl.WaitOne(WaitTime);
-
-                    // Removing the wait handle.
-                    PendingResponseWaitHandles.Remove(minfo.DataSocketId);
-
-                    // The response to the sending.
-                    response(hndl.Response);
-                }
-            }
-            else if (WSServer != null)
-            {
-                IEnumerable<WebSocketSharp.Server.IWebSocketSession> sessions = FindValidSession(clientIds);
-
-                // Sending to the specific clients.
-                foreach (var client in sessions)
-                {
-                    minfo.DataSocketId = ToDataSocketID(client.ID);
-
-                    if (response == null)
-                    {
-                        // Send async and do nothing.
-                        client.Context.WebSocket.SendAsync(GetWebsocketMessageData(minfo), (t) => { });
-                    }
-                    else
-                    {
-                        // Send async and wait for response.
-                        ResponseWaitHandle hndl = new ResponseWaitHandle();
-                        PendingResponseWaitHandles[minfo.DataSocketId] = hndl;
-                        client.Context.WebSocket.SendAsync(GetWebsocketMessageData(minfo), (t) =>
-                        {
-                            if (!t)
-                            {
-                                // not complete sending. 
-                                // error. 
-                                // response is null.
-                                hndl.Response = null;
-                                hndl.Set();
-                            }
-                        });
-                        waitHandles.Add(hndl);
-                    }
-                }
-
-                if (waitHandles != null && waitHandles.Count > 0)
-                {
-                    // waiting
-                    foreach (var hndl in waitHandles)
-                        hndl.WaitOne(WaitTime); // all need to complete.
-
-                    foreach (var rmsg in waitHandles.Select(h => h.Response))
-                        response(rmsg);
-                }
-            }*/
         }
 
         private string ToDataSocketID(string id)
@@ -779,7 +724,6 @@ namespace WebsocketPipe
 
         private void doSend(TMessage msg, Action<bool, string> asyncOnComplete, string id)
         {
-
         }
 
         private byte[] GetWebsocketMessageData(WebsocketPipeMessageInfo msg)
