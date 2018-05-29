@@ -89,7 +89,9 @@ namespace WebsocketPipe
         /// </summary>
         public long TotalMessageRecivedEvents { get; private set; }
 
-
+        /// <summary>
+        /// Clinet socket id.
+        /// </summary>
         public const String SendAsClientWebsocketID = "_as_client";
 
         #endregion
@@ -175,6 +177,8 @@ namespace WebsocketPipe
 
         #region logging
 
+        public int MinTimeForLogTimedMessages { get; set; } = 20;
+
         private bool? m_doWebsocketLogging;
 
         /// <summary>
@@ -211,6 +215,12 @@ namespace WebsocketPipe
             CallLogMethod(websocketID, DateTime.Now.ToString() + "\t WSP| " + msg);
         }
 
+        private void WriteLogTimeMessage(string websocketID, string msg, double ms, bool ifOnlyAboveMinTime=true)
+        {
+            if (!ifOnlyAboveMinTime || ms >= MinTimeForLogTimedMessages)
+                WriteLogMessage(websocketID, msg + ", dt [ms]: " + ms);
+        }
+
         private void WebsocketLogMessage(string websocketID, string msg)
         {
             if(LogWebsocketMessages)
@@ -218,6 +228,8 @@ namespace WebsocketPipe
                 CallLogMethod(websocketID, msg);
             }
         }
+
+        
 
         #endregion
 
@@ -419,6 +431,9 @@ namespace WebsocketPipe
 
         protected void OnError(WebSocketSharp.ErrorEventArgs e, string id)
         {
+            // just throw the error.
+            WriteLogMessage(id, e.Message + "\nexception:\n" + e.Exception.ToString());
+            throw e.Exception;
         }
 
         protected void OnClose(WebSocketSharp.CloseEventArgs e, string id)
@@ -462,7 +477,7 @@ namespace WebsocketPipe
             }
 
             watch.Stop();
-            WriteLogMessage(id, "Read from datasocket time [ms] " + watch.Elapsed.TotalMilliseconds);
+            WriteLogTimeMessage(id, "Read from datasocket",watch.Elapsed.TotalMilliseconds);
 
             ms.Close();
             ms.Dispose();
@@ -490,7 +505,8 @@ namespace WebsocketPipe
                 return new MessageEventArgs(o, msg.NeedsResponse, id);
             }).ToArray();
 
-            WriteLogMessage(id, "Deserialzed " + msgs.Length + " messages with " + bytecount + " [bytes] " + " [ms]: " + watch.Elapsed.TotalMilliseconds);
+            WriteLogTimeMessage(id, "Deserialzed " + msgs.Length + " messages with " + bytecount + " [bytes] ", watch.Elapsed.TotalMilliseconds);
+
             watch.Stop();
             watch.Reset();
             watch.Start();
@@ -502,7 +518,7 @@ namespace WebsocketPipe
                 OnMessage(me);
             }
             watch.Stop();
-            WriteLogMessage(id,"Handled evnets for " + msgs.Length + " messages [ms]: " + watch.Elapsed.TotalMilliseconds);
+            WriteLogTimeMessage(id, "Handled evnets for " + msgs.Length + " messages", watch.Elapsed.TotalMilliseconds);
         }
 
         protected void OnOpen(string id)
@@ -608,7 +624,7 @@ namespace WebsocketPipe
 
             watch.Stop();
 
-            WriteLogMessage(null, "Serialized msg with " + minfo.Data.Length + " [bytes] [ms]: " + watch.Elapsed.TotalMilliseconds);
+            WriteLogTimeMessage(null, "Serialized msg with " + minfo.Data.Length + " [bytes]", watch.Elapsed.TotalMilliseconds);
             var senders = new[] {new
             {
                 socketID = "",
@@ -743,7 +759,7 @@ namespace WebsocketPipe
             }
 
             watch.Stop();
-            WriteLogMessage(null, "Write to datasocket time [ms] " + watch.Elapsed.TotalMilliseconds);
+            WriteLogTimeMessage(null, "Write to datasocket, ", watch.Elapsed.TotalMilliseconds);
 
             byte[] data = strm.ToArray();
             strm.Close();
