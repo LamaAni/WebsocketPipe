@@ -13,7 +13,6 @@ namespace ClientTesterConsole
         static void Main(string[] args)
         {
             var dataToSend = new byte[3000*3000];
-
             bool usePipe = true;
             var url = new Uri("ws://localhost:8000/Tester");
             WebsocketPipe.IWebsocketPipeDataSocket datasocket;
@@ -21,22 +20,19 @@ namespace ClientTesterConsole
                 datasocket = new WebsocketPipe.WebsocketPipeMemoryMappedFileDataSocket();
             else datasocket = new WebsocketPipe.WebsocketPipeMSGInternalDataSocket();
 
-
             ClientTester = new WebsocketPipe.WebsocketPipe<byte[]>(url,datasocket);
-            ClientTester.LogMethod = (s) =>
+            ClientTester.LogMethod = (id,s) =>
             {
                 Console.WriteLine(s);
             };
             ClientTester.MessageRecived += ClientTester_MessageRecived;
             ClientTester.Connect();
-
-            System.Threading.Thread.Sleep(100);
             ClientTester.Send(dataToSend, (esp) => { });
             
             Console.WriteLine("Press <enter> to exit.");
             Console.ReadLine();
 
-            ClientTester.Disconnect();
+            ClientTester.Stop();
             ClientTester.Dispose();
         }
 

@@ -218,7 +218,7 @@ namespace WebsocketPipe
         #endregion
 
         #region Read write
-
+        Object m_writeLock = new Object();
         /// <summary>
         /// Writes the message to a memory mapped file, where the memory mapped file name is WebsocketPipe.Address + id.
         /// mmf format: [wasread? 1 byte][datasize(int)][length(int)][msg][length(int)][msg]...
@@ -230,6 +230,14 @@ namespace WebsocketPipe
         /// <param name="to">The stream to write the mmf filename to.</param>
         /// <param name="id">The id of the targer we are writing to, since there may be many we open a mmf for each</param>
         public virtual void WriteMessage(WebsocketPipeMessageInfo msg, Stream to)
+        {
+            lock(m_writeLock)
+            {
+                _WriteMessage(msg, to);
+            }
+        }
+
+        void _WriteMessage(WebsocketPipeMessageInfo msg, Stream to)
         {
             if(msg.Data.Length < this.UseInternalPacketDataSendingIfMsgByteSizeIsLessThen)
             {
@@ -272,6 +280,7 @@ namespace WebsocketPipe
             mu.ReleaseMutex();
         }
 
+        Object m_readLock = new Object();
         /// <summary>
         /// Reads the pending messages in the memory mapped file, where the memory mapped file name is in the stream from.
         /// mmf format: [wasread? 1 byte][datasize(int)][length(int)][msg][length(int)][msg]...
@@ -282,6 +291,17 @@ namespace WebsocketPipe
         /// <param name="from"></param>
         /// <returns></returns>
         public virtual IEnumerable<WebsocketPipeMessageInfo> ReadMessages(Stream from)
+        {
+            IEnumerable<WebsocketPipeMessageInfo> msgs = null;
+            // messages should be read by order.
+            lock (m_readLock)
+            {
+                msgs = _ReadMessages(from);
+            }
+            return msgs;
+        }
+
+        IEnumerable<WebsocketPipeMessageInfo> _ReadMessages(Stream from)
         {
             // reading the memory mapped file name or the msg bytes.
             if(from.ReadByte()==1)

@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ClientTesterConsole", "Clie
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WebsocketPipeCSUnitTests", "WebsocketPipeCSUnitTests\WebsocketPipeCSUnitTests.csproj", "{9E837D71-EBCC-48E7-89C6-A10B49FE71BC}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FleckNet4", "Fleck\FleckNet4.csproj", "{0F562A7D-6365-4DC0-BD3D-566A4FA6E2D8}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -33,6 +35,10 @@ Global
 		{9E837D71-EBCC-48E7-89C6-A10B49FE71BC}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{9E837D71-EBCC-48E7-89C6-A10B49FE71BC}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{9E837D71-EBCC-48E7-89C6-A10B49FE71BC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0F562A7D-6365-4DC0-BD3D-566A4FA6E2D8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0F562A7D-6365-4DC0-BD3D-566A4FA6E2D8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0F562A7D-6365-4DC0-BD3D-566A4FA6E2D8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0F562A7D-6365-4DC0-BD3D-566A4FA6E2D8}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

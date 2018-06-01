@@ -18,12 +18,12 @@ namespace WebsocketPipe
         /// </summary>
         /// <param name="msg"></param>
         /// <param name="senderID"></param>
-        /// <param name="needsResponse"></param>
-        public WebsocketPipeMessageInfo(byte[] msg, string senderID, bool needsResponse = false)
+        /// <param name="requiresResponse"></param>
+        public WebsocketPipeMessageInfo(byte[] msg, string senderID, bool requiresResponse = false)
         {
             Data = msg;
             DataSocketId = senderID;
-            NeedsResponse = needsResponse;
+            RequiresResponse = requiresResponse;
         }
 
         /// <summary>
@@ -62,7 +62,7 @@ namespace WebsocketPipe
         /// <param name="to"></param>
         public void WriteToStream(BinaryWriter to)
         {
-            to.Write((byte)(NeedsResponse ? 1 : 0));
+            to.Write((byte)(RequiresResponse ? 1 : 0));
             if (Data == null)
             {
                 to.Write(0);
@@ -80,7 +80,7 @@ namespace WebsocketPipe
         /// <summary>
         /// If true then the service will wait for response before continuing (sync sending!).
         /// </summary>
-        public bool NeedsResponse = false;
+        public bool RequiresResponse = false;
 
         /// <summary>
         /// The Id of the sending entity.
