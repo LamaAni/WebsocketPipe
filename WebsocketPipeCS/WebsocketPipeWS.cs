@@ -313,12 +313,18 @@ namespace WebsocketPipe
 
         #region event handling
 
+        object m_messageRecivedProcessLock = new object();
+
         void OnMessageRecived(string msg, byte[] data, string id)
         {
             if (MessageRecived == null)
                 return;
 
-            AsyncOperationWithTimeout(() => { MessageRecived(this, new MessageArgs(id, msg, data)); });
+            try
+            {
+                AsyncOperationWithTimeout(() => { MessageRecived(this, new MessageArgs(id, msg, data)); });
+            }
+            catch (Exception ex) { ThrowOrInvokeError(id, ex); }
         }
 
         void OnErrorRecived(Exception ex, string id)

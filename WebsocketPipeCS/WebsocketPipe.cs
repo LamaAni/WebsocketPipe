@@ -327,28 +327,29 @@ namespace WebsocketPipe
             string datasocketId = ToDataSocketID(id);
 
             TotalMessageRecivedEvents++;
-            MemoryStream ms = new MemoryStream(data);
-            WebsocketPipeMessageInfo[] msgs;
+            WebsocketPipeMessageInfo[] msgs = null;
 
             System.Diagnostics.Stopwatch watch = new System.Diagnostics.Stopwatch();
             watch.Start();
+
             try
             {
-                msgs = DataSocket.ReadMessages(ms).ToArray();
+                AsyncOperationWithTimeout(() =>
+                {
+                    using (var ms = new MemoryStream(data))
+                        msgs = DataSocket.ReadMessages(ms).ToArray();
+                });
             }
             catch(Exception ex)
             {
                 string msg = "Error while reading messages from data socket: " + ex.Message;
                 WriteLogMessage(id, msg);
-                throw new Exception(msg, ex);
+                ThrowOrInvokeError(id, new Exception(msg, ex));
+                return;
             }
 
             watch.Stop();
             WriteTimedLogMessage(id, "Read from datasocket",watch.Elapsed.TotalMilliseconds);
-
-            ms.Close();
-            ms.Dispose();
-            ms = null;
 
             watch.Reset();
             watch.Start();
@@ -387,7 +388,7 @@ namespace WebsocketPipe
                 OnMessage(me);
             }
             watch.Stop();
-            WriteTimedLogMessage(id, "Handled evnets for " + mes.Length + " messages", 1000);
+            WriteTimedLogMessage(id, "Handled evnets for " + mes.Length + " messages", watch.Elapsed.TotalMilliseconds);
         }
 
         #endregion
@@ -489,7 +490,7 @@ namespace WebsocketPipe
             if (MessageRecived == null)
                 return;
 
-            StackedThreadOperation(e.WebsocketID, () =>
+            Action a = () =>
             {
                 MessageRecived(this, e);
 
@@ -497,11 +498,16 @@ namespace WebsocketPipe
                 {
                     Send(e.Response, e.WebsocketID);
                 }
-            });
+            };
+            a();
+            //StackedThreadOperation(e.WebsocketID, a);
         }
 
         protected virtual void OnClose(MessageEventArgs e)
         {
+            if (e.WebsocketID != null && DataSocket != null)
+                DataSocket.Close(ToDataSocketID(e.WebsocketID));
+
             if (Close != null)
                 Close(this, e);
         }

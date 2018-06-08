@@ -51,7 +51,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="MemoryMappedBinaryStack.cs" />
+    <Compile Include="MemoryMappedBinaryCollection.cs" />
     <Compile Include="WebsocketPipeExtentions.cs" />
     <Compile Include="WebsocketPipeDataSerializer.cs" />
     <Compile Include="WebsocketPipe.cs" />

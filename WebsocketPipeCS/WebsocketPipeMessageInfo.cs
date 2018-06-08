@@ -36,6 +36,14 @@ namespace WebsocketPipe
             return FromStream(new BinaryReader(from));
         }
 
+        public static WebsocketPipeMessageInfo FromBytes(byte[] fromBytes)
+        {
+            MemoryStream strm = new MemoryStream(fromBytes);
+            WebsocketPipeMessageInfo msg = FromStream(strm);
+            strm.Dispose();
+            return msg;
+        }
+
         /// <summary>
         /// Reads a new message info from stream.
         /// </summary>
@@ -47,6 +55,16 @@ namespace WebsocketPipe
             int blen = from.ReadInt32();
             return new WebsocketPipeMessageInfo(from.ReadBytes(blen), null, needsResponse);
         }
+
+        public byte[] ToBytes()
+        {
+            MemoryStream to = new MemoryStream();
+            WriteToStream(to);
+            byte[] data = to.ToArray();
+            to.Dispose();
+            return data;
+        }
+
         /// <summary>
         /// Writes the message info to stream
         /// </summary>
