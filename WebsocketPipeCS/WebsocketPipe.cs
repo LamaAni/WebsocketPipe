@@ -169,6 +169,11 @@ namespace WebsocketPipe
         /// </summary>
         public bool LogWebsocketMessages { get; set; }
 
+        /// <summary>
+        /// If true then log ping messages from the websocket.
+        /// </summary>
+        public bool LogWebsocketPingMessages { get; private set; } = false;
+
 
         public delegate void LogMethodDelegate(string websocketID, string message);
         /// <summary>
@@ -287,7 +292,9 @@ namespace WebsocketPipe
             {
                 Ping(this, new MessageEventArgs(null, false, e.WebsocketID));
             }
-            WriteLogMessage(e.WebsocketID, "WS " + e.WebsocketID + ": ping (" + e.Data.Length + ")");
+
+            if (LogWebsocketPingMessages)
+                WriteLogMessage(e.WebsocketID, "WS " + e.WebsocketID + ": ping (" + e.Data.Length + ")");
         }
 
         private void Websocket_Error(object sender, WebsocketPipeWS.ErrorArgs e)
